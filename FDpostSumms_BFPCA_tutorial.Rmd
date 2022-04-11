@@ -1,0 +1,254 @@
+---
+title: "Tutorial: Functional Depth Posterior Summaries for BFPCA"
+output: html_document
+---
+
+## Description 
+A step-by-step implementation of the posterior estimation of the BFPCA model components
+and posterior summaries using both traditional and proposed functional depth point 
+estimates and credible intervals detailed in "Functional Depth Posterior Summaries 
+for Bayesian Functional Principal Component Analysis Based on Functional Depth" 
+by Boland et al. (2022). This procedure assumes that the data is comprised of densely 
+observed functional observations. 
+
+## Functions Implemented
+FDpostSumms_BFPCA_simulateData.R, FDpostSumms_BFPCA_MCMC.R, FDpostSumms_BFPCA_postSumms.R, 
+FDpostSumms_BFPCA_postPlots.R, FDpostSumms_BFPCA_simTables.R
+
+## Tutorial Outline 
+1. Simulate functional data using the traditional FPCA model (FDpostSumms_BFPCA_simulateData.R)
+2. MCMC to obtain posterior estimates (FDpostSumms_BFPCA_MCMC.R)
+3. Calculate traditional and proposed posterior summaries (FDpostSumms_BFPCA_postSumms.R)
+4. Visualization of posterior samples and summaries (BFPCA_postPlots.R)
+5. Calculation of simulation performance measures (BFPCA_simTables.R)
+
+```{r, warning = FALSE, message = FALSE}
+# Install missing packages
+list.of.packages <- c('gridExtra')
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages) 
+
+# Load packages
+library(gridExtra)
+
+# Load R functions
+source("FDpostSumms_BFPCA_simulateData.R")
+source("FDpostSumms_BFPCA_MCMC.R")
+source("FDpostSumms_BFPCA_postSumms.R")
+source("FDpostSumms_BFPCA_postPlots.R")
+source("FDpostSumms_BFPCA_simTables.R")
+```
+
+## 1. Simulate functional data using the standard FPCA model
+
+In this tutorial, the generated function data contain observations for $n = 50$ 
+subjects comprised of values $Y_i(t_j)$ at $T = 40$ equidistant time points within 
+$t \in [0, 1]$. The functional data are generated from the standard FPCA model corresponding 
+to the simulation case 1 in which no outliers are generated. The model components
+used to generate the data are detailed in Appendix C. 
+
+```{r, warning = FALSE, message = FALSE}
+set.seed(999)
+Y <- simulateData(n = 50, 
+                  t = seq(0, 1, length.out = 40))
+```
+
+## 2. MCMC to obtain posterior estimates 
+
+We obtain the $M = 4000$ posterior estimates for the model parameters and components 
+utilizing the BFPCA modeling framework using $R = 20$ B-spline basis functions and 
+$L = 6$ latent components. The posterior estimates are obtained from the Gibbs sampler 
+described in Appendix A using an MCMC chain with 25,000 iterations using the first 
+5,000 iterations for burn-in and thinning at every 5th observation. 
+
+```{r, cache = TRUE, warning = FALSE, message = FALSE}
+# Note: For n = 50, T = 40, R = 20, and L = 6, running the MCMC 
+#       chain with 25,000 iterations takes approximately 8 mins
+
+posterior_estimates <- MCMC(Y = Y,
+                            t = seq(0, 1, length.out = 40),
+                            runs = 25000,
+                            burnin = 0.2,
+                            thin = 5,
+                            r_tot = NA,
+                            l_tot = NA)
+```
+
+## 3. Calculate traditional and proposed posterior summaries 
+
+```{r, cache = TRUE, warning = FALSE, message = FALSE}
+posterior_summaries <- postSumms(K = 2, 
+                                 model_components = posterior_estimates$model_components,
+                                 alpha = 0.05)
+```
+
+## 4. Visualization of posterior samples and summaries 
+
+The following visualizations are the plots displayed in Figures 3 and 4 of the manuscript 
+and correspond to simulation case 1 for a single generated run (note: mean function plots 
+are not included in manuscript). In the figures, the posterior sample is displayed as
+solid grey lines, and the specified point estimate for central tendency is displayed as 
+a solid black line. If the parametric credible intervals are chosen to be used in the
+visualization, the pointwise parametric credible interval is given as the solid blue region, 
+and the dashed solid lines represent the simultaneous parametric credible interval. Likewise, 
+if the chosen credible interval is the quantile credible interval, the solid red region and
+dashed black lines represent the pointwise and simultaneous quantile credible intervals, 
+respectively. If the functional depth credible interval is chosen, the yellow region represents 
+the MBD credible interval, and the MVD credible interval is given as solid dashed lines but is 
+only displayed in plots of the eigenfunction estimates as the MVD credible interval is not
+calculated for the mean function. 
+
+### Mean Function
+```{r, warning = FALSE, message = FALSE, fig.height=4, fig.width=14}
+mu.param <- postPlots(data = posterior_estimates$model_components$mu.m,
+                      k = 0, 
+                      t = seq(0, 1, length.out = 40), 
+                      postSumms = posterior_summaries, 
+                      point_est = "hat",
+                      credible_int = "parametric", 
+                      title = "95% Parametric", 
+                      ylab = "Mean Function", 
+                      xlab = "Time (t)")
+mu.quant <- postPlots(data = posterior_estimates$model_components$mu.m,
+                      k = 0, 
+                      t = seq(0, 1, length.out = 40), 
+                      postSumms = posterior_summaries, 
+                      point_est = "hat", 
+                      credible_int = "quantile", 
+                      title = "95% Quantile", 
+                      ylab = "Mean Function",
+                      xlab = "Time (t)")
+mu.depth <- postPlots(data = posterior_estimates$model_components$mu.m,
+                      k = 0, 
+                      t = seq(0, 1, length.out = 40), 
+                      postSumms = posterior_summaries, 
+                      point_est = "MBD",
+                      credible_int = "depth", 
+                      title = "95% Depth",
+                      ylab = "Mean Function",
+                      xlab = "Time (t)")
+grid.arrange(mu.param, mu.quant, mu.depth, nrow = 1, ncol = 3)
+```
+
+### First Eigenfunction
+```{r, warning = FALSE, message = FALSE, fig.height=4, fig.width=14}
+psi1.param <- postPlots(data = posterior_estimates$model_components$psi.m[[1]],
+                        k = 1, 
+                        t = seq(0, 1, length.out = 40), 
+                        postSumms = posterior_summaries, 
+                        point_est = "hat",
+                        credible_int = "parametric", 
+                        title = "95% Parametric",
+                        ylab = "1st Eigenfunction", 
+                        xlab = "Time (t)")
+psi1.quant <- postPlots(data = posterior_estimates$model_components$psi.m[[1]],
+                        k = 1, 
+                        t = seq(0, 1, length.out = 40), 
+                        postSumms = posterior_summaries, 
+                        point_est = "hat",
+                        credible_int = "quantile", 
+                        title = "95% Quantile",
+                        ylab = "1st Eigenfunction", 
+                        xlab = "Time (t)")
+psi1.depth <- postPlots(data = posterior_estimates$model_components$psi.m[[1]],
+                        k = 1, 
+                        t = seq(0, 1, length.out = 40), 
+                        postSumms = posterior_summaries, 
+                        point_est = "MBD",
+                        credible_int = "depth", 
+                        title = "95% Depth",
+                        ylab = "1st Eigenfunction", 
+                        xlab = "Time (t)")
+grid.arrange(psi1.param, psi1.quant, psi1.depth, nrow = 1, ncol = 3)
+```
+
+### Second Eigenfunction
+```{r, warning = FALSE, message = FALSE, fig.height=4, fig.width=14}
+psi2.param <- postPlots(data = posterior_estimates$model_components$psi.m[[2]],
+                        k = 2, 
+                        t = seq(0, 1, length.out = 40), 
+                        postSumms = posterior_summaries, 
+                        point_est = "hat",
+                        credible_int = "parametric", 
+                        title = "95% Parametric",
+                        ylab = "2nd Eigenfunction", 
+                        xlab = "Time (t)")
+psi2.quant <- postPlots(data = posterior_estimates$model_components$psi.m[[2]],
+                        k = 2, 
+                        t = seq(0, 1, length.out = 40), 
+                        postSumms = posterior_summaries, 
+                        point_est = "hat",
+                        credible_int = "quantile", 
+                        title = "95% Quantile",
+                        ylab = "2nd Eigenfunction", 
+                        xlab = "Time (t)")
+psi2.depth <- postPlots(data = posterior_estimates$model_components$psi.m[[2]],
+                        k = 2, 
+                        t = seq(0, 1, length.out = 40), 
+                        postSumms = posterior_summaries, 
+                        point_est = "MBD",
+                        credible_int = "depth", 
+                        title = "95% Depth",
+                        ylab = "2nd Eigenfunction", 
+                        xlab = "Time (t)")
+grid.arrange(psi2.param, psi2.quant, psi2.depth, nrow = 1, ncol = 3)
+```
+
+
+## 5. Calculation of simulation performance measures 
+
+To recall, simulation performance measures are calculated for the point estimates as ISME and MSE
+and credible intervals as AR and NAR for a given simulation run. Tables 2 and 3 in the manuscript 
+contain the averaged performance measures across simulation runs for the point estimates and credible 
+intervals, respectively. In order recreate these tables, 10 functional datasets are generated and 
+the posterior estimates and summaries for each of the 10 simulated runs are calculated. Using these 
+posterior summaries, the average ISME/MSE and AR/NAR values across the runs are calculated and displayed 
+in the generated tables below. 
+
+```{r, cache = TRUE}
+simulation_data <- list()
+for(x in 1:10){
+  simulation_data[[x]] <- simulateData(n = 50, 
+                                       t = seq(0, 1, length.out = 40))
+}
+
+simulation_posterior_estimates <- list()
+for(x in 1:10){
+  simulation_posterior_estimates[[x]] <- MCMC(Y = simulation_data[[x]],
+                                              t = seq(0, 1, length.out = 40),
+                                              runs = 25000,
+                                              burnin = 0.2,
+                                              thin = 5)
+}
+
+
+simulation_posterior_summaries <- list()
+for(x in 1:10){
+  simulation_posterior_summaries[[x]] <- postSumms(
+    K = 2, 
+    model_components = simulation_posterior_estimates[[x]]$model_components,
+    alpha = 0.05)
+}
+```
+
+```{r}
+t <- seq(0, 1, length.out = 40)
+truth_funcs <- list(mu = 10 * sqrt(1 - 2 * (t - 0.5)^2),
+                    rho = list(rho_1 = 15, rho_2 = 5), 
+                    psi = list(psi_1 = (sqrt(2) * sin(2 * pi * t))/sqrt(length(t)),
+                               psi_2 = (sqrt(2) * cos(2 * pi * t))/sqrt(length(t))))
+
+simTables(postEsts = simulation_posterior_estimates,
+          postSumms = simulation_posterior_summaries,
+          tableIndex = 1,
+          truth_funcs = truth_funcs,
+          K = 2)
+
+simTables(postEsts = simulation_posterior_estimates,
+          postSumms = simulation_posterior_summaries,
+          tableIndex = 2,
+          truth_funcs = truth_funcs,
+          K = 2)
+
+```
+
